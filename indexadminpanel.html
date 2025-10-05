@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>DM COIN FARMING — Admin Panel</title>
+<style>
+:root{
+  --bg:#0f0f11; --surface:#171718; --muted:#9aa0a6; --accent:#0a84ff;
+  --success:#4caf50; --danger:#f44336; --card:#1f1f22;
+  --font:"Inter",system-ui,Arial,sans-serif;
+}
+*{box-sizing:border-box}
+body{margin:0;font-family:var(--font);background:var(--bg);color:#fff;min-height:100vh;display:flex;flex-direction:column}
+header{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;background:var(--surface);border-bottom:1px solid #222}
+.balance{font-weight:700;font-size:1.1rem}
+.small{color:var(--muted);font-size:0.85rem}
+main{flex:1;overflow:auto;padding:16px}
+.card{background:linear-gradient(180deg,rgba(255,255,255,0.02),rgba(255,255,255,0.01));padding:14px;border-radius:12px;margin-bottom:12px;border:1px solid rgba(255,255,255,0.03)}
+.center{text-align:center}
+.logo{width:110px;height:110px;border-radius:50%;display:block;margin:0 auto 10px;border:4px solid var(--accent);object-fit:cover}
+button{background:var(--accent);border:none;padding:8px 12px;border-radius:10px;color:#fff;font-weight:600;cursor:pointer}
+button:disabled { background: #555; cursor: not-allowed; }
+button.small{padding:4px 8px;font-size:0.8rem;margin:0 2px}
+.hidden{display:none}
+input,select{width:100%;padding:10px;border-radius:8px;border:1px solid rgba(255,255,255,0.04);background:transparent;color:#fff;margin-top:8px}
+.muted{color:var(--muted)}
+table{width:100%;border-collapse:collapse;font-size:0.85rem;margin-top:8px}
+th,td{border-bottom:1px solid rgba(255,255,255,0.06);padding:6px;text-align:left}
+th{color:var(--muted)}
+.danger{background:var(--danger)}
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <div class="balance">DM COIN ADMIN PANEL</div>
+    <div class="small">Manage Users, Tasks & Withdrawals</div>
+  </div>
+  <div style="text-align:right">
+    <div id="adminName">Administrator</div>
+    <div class="small" id="loginStatus">Not logged in</div>
+  </div>
+</header>
+
+<main>
+  <section id="loginTab" class="card center">
+    <img class="logo" src="https://i.ibb.co/04PQkwb/IMG-3086.png" alt="logo">
+    <h2>ADMIN LOGIN</h2>
+    <input id="adminEmail" placeholder="Admin Email" value="admin@dmcoin.com">
+    <input id="adminPass" type="password" placeholder="Password" value="password">
+    <button onclick="adminLogin()" style="margin-top:10px;width:100%">Login</button>
+  </section>
+
+  <section id="adminPanel" class="hidden">
+    <div class="card">
+      <h3>📊 Dashboard Overview</h3>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px">
+        <div class="card center"><div class="small">Total Users</div><div class="balance" id="totalUsers">0</div></div>
+        <div class="card center"><div class="small">Total Coins</div><div class="balance" id="totalCoins">0</div></div>
+        <div class="card center"><div class="small">Pending Withdrawals</div><div class="balance" id="pendingWithdrawals">0</div></div>
+        <div class="card center"><div class="small">Active Tasks</div><div class="balance" id="activeTasks">0</div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>⚙️ System Settings</h3>
+      <input id="settingFarmRate" type="number" placeholder="Farming Rate (coins/hour)">
+      <input id="settingCoinValue" type="number" placeholder="Coin to USD Value">
+      <button onclick="updateSettings()" style="margin-top:8px">Update Settings</button>
+    </div>
+
+    <div class="card">
+      <h3>📋 Task Management</h3>
+      <input id="taskTitle" placeholder="Task Title">
+      <input id="taskReward" type="number" placeholder="Reward (coins)">
+      <input id="taskLink" placeholder="Task Link (URL)">
+      <button onclick="addTask()" style="margin-top:8px">Add Task</button>
+      <div style="margin-top:12px">
+        <h4>Current Tasks</h4>
+        <div id="adminTaskList" class="muted">No tasks yet</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>💸 Withdrawal Requests</h3>
+      <div id="adminWithdrawList" class="muted">No withdrawals yet.</div>
+    </div>
+
+    <div class="card">
+      <h3>👥 User Management</h3>
+      <div id="userList" class="muted">Loading users...</div>
+    </div>
+  </section>
+
+<script type="module">
+  // Firebase SDKs
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-app.js";
+  import { getAuth, signInWithEmailAndPassword, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-auth.js";
+  import { getFirestore, collection, doc, addDoc, onSnapshot, deleteDoc, updateDoc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js";
+
+  // Firebase Configuration
+  const firebaseConfig = {
+    apiKey: "AIzaSyCdbhceXnajL6fEyl2cROdxlxMa4zNRNnU",
+    authDomain: "dmcoinapp.firebaseapp.com",
+    projectId: "dmcoinapp",
+    storageBucket: "dmcoinapp.firebasestorage.app",
+    messagingSenderId: "587072749523",
+    appId: "1:587072749523:web:991ff0e197f8e23e31b926",
+    measurementId: "G-E1XW7WCS9X"
+  };
+
+  // Initialize Firebase
+  const app = initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+  const db = getFirestore(app);
+
+  // Global state
+  window.adminState = { users: [], tasks: [], withdrawals: [], settings: {} };
+  function $(id) { return document.getElementById(id); }
+
+  // Authentication
+  window.adminLogin = async function() {
+    const email = $('adminEmail').value;
+    const password = $('adminPass').value;
+    try {
+      await signInWithEmailAndPassword(auth, email, password);
+    } catch (error) {
+      alert("Error logging in: " + error.message);
+    }
+  };
+
+  onAuthStateChanged(auth, (user) => {
+    if (user) {
+      $('loginTab').classList.add('hidden');
+      $('adminPanel').classList.remove('hidden');
+      $('loginStatus').innerText = 'Logged in';
+      $('adminName').innerText = user.email;
+      initializeListeners();
+    } else {
+      $('loginTab').classList.remove('hidden');
+      $('adminPanel').classList.add('hidden');
+      $('loginStatus').innerText = 'Not logged in';
+    }
+  });
+
+  // Firestore Listeners
+  function initializeListeners() {
+    onSnapshot(collection(db, "users"), (snapshot) => {
+      window.adminState.users = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      updateDashboard();
+      renderUserList();
+    });
+
+    onSnapshot(collection(db, "tasks"), (snapshot) => {
+      window.adminState.tasks = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      updateDashboard();
+      renderAdminTasks();
+    });
+
+    onSnapshot(collection(db, "withdrawals"), (snapshot) => {
+        window.adminState.withdrawals = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        updateDashboard();
+        renderAdminWithdrawals();
+    });
+    
+    onSnapshot(doc(db, "settings", "global"), (snapshot) => {
+        if (snapshot.exists()) {
+            const settings = snapshot.data();
+            $('settingFarmRate').value = settings.farmRate || '';
+            $('settingCoinValue').value = settings.coinToUsdValue || '';
+        }
+    });
+  }
+
+  // UI Updates
+  function updateDashboard() {
+    $('totalUsers').innerText = window.adminState.users.length;
+    $('totalCoins').innerText = window.adminState.users.reduce((sum, user) => sum + (user.coins || 0), 0).toFixed(0);
+    $('pendingWithdrawals').innerText = window.adminState.withdrawals.filter(w => w.status === 'Pending').length;
+    $('activeTasks').innerText = window.adminState.tasks.length;
+  }
+
+  function renderUserList() {
+    const el = $('userList');
+    if (!window.adminState.users.length) {
+      el.innerHTML = '<div class="muted">No users found</div>'; return;
+    }
+    let html = '<table><tr><th>User ID</th><th>Coins</th><th>Completed Tasks</th><th>Status</th></tr>';
+    window.adminState.users.forEach(user => {
+      html += `<tr><td>${user.id.substring(0,10)}...</td><td>${Math.floor(user.coins || 0)}</td><td>${(user.completedTasks || []).length}</td>
+      <td>${user.miningStart ? '⛏ Mining' : '💤 Idle'}</td></tr>`;
+    });
+    el.innerHTML = html + '</table>';
+  }
+
+  function renderAdminTasks() {
+    const el = $('adminTaskList');
+    if (!window.adminState.tasks.length) {
+      el.innerHTML = '<div class="muted">No tasks yet</div>'; return;
+    }
+    let html = '<table><tr><th>Task</th><th>Reward</th><th>Link</th><th>Action</th></tr>';
+    window.adminState.tasks.forEach(t => {
+      html += `<tr><td>${t.title}</td><td>${t.reward}</td><td>${t.link || '-'}</td>
+      <td><button class="small danger" onclick="deleteTask('${t.id}')">Delete</button></td></tr>`;
+    });
+    el.innerHTML = html + '</table>';
+  }
+  
+  function renderAdminWithdrawals() {
+    const adminList = $('adminWithdrawList');
+    if (!window.adminState.withdrawals.length) {
+        adminList.innerText = 'No withdrawals yet.'; return;
+    }
+    let html = '<table><tr><th>User ID</th><th>Amount</th><th>Address</th><th>Method</th><th>Status</th><th>Action</th></tr>';
+    window.adminState.withdrawals.forEach(w => {
+        html += `<tr><td>${w.userId.substring(0, 10)}...</td><td>${w.amount}</td><td>${w.address}</td><td>${w.method}</td><td>${w.status}</td>
+        <td>
+            <button class="small" ${w.status !== 'Pending' ? 'disabled' : ''} onclick="updateWithdraw('${w.id}','Approved')">✅</button>
+            <button class="small danger" ${w.status !== 'Pending' ? 'disabled' : ''} onclick="updateWithdraw('${w.id}','Rejected')">❌</button>
+        </td></tr>`;
+    });
+    adminList.innerHTML = html + '</table>';
+  }
+
+  // Actions
+  window.addTask = async function() {
+    const title = $('taskTitle').value.trim();
+    const reward = parseInt($('taskReward').value);
+    const link = $('taskLink').value.trim();
+    if (!title || !reward) return alert('Fill task title and reward');
+    
+    try {
+      await addDoc(collection(db, "tasks"), { title, reward, link });
+      $('taskTitle').value = ''; $('taskReward').value = ''; $('taskLink').value = '';
+      alert('Task added successfully!');
+    } catch (e) { alert('Error: ' + e.message); }
+  };
+
+  window.deleteTask = async function(taskId) {
+    if (confirm('Delete this task?')) {
+      try { await deleteDoc(doc(db, "tasks", taskId)); } catch (e) { alert('Error: ' + e.message); }
+    }
+  };
+  
+  window.updateWithdraw = async function(id, status) {
+    const withdrawRef = doc(db, "withdrawals", id);
+    try {
+        const withdrawDoc = await getDoc(withdrawRef);
+        if (!withdrawDoc.exists()) return alert('Withdrawal request not found.');
+        
+        const withdrawalData = withdrawDoc.data();
+        await updateDoc(withdrawRef, { status: status });
+
+        if (status === 'Rejected') {
+            const userRef = doc(db, "users", withdrawalData.userId);
+            const userDoc = await getDoc(userRef);
+            if (userDoc.exists()) {
+                const newBalance = (userDoc.data().coins || 0) + withdrawalData.amount;
+                await updateDoc(userRef, { coins: newBalance });
+                alert('Withdrawal rejected and coins refunded.');
+            } else {
+                alert('Withdrawal status updated, but could not find user to refund.');
+            }
+        } else {
+            alert('Withdrawal status updated to ' + status);
+        }
+    } catch (e) { alert('Error updating withdrawal status: ' + e.message); }
+  };
+
+  window.updateSettings = async function() {
+    const rate = parseFloat($('settingFarmRate').value);
+    const value = parseFloat($('settingCoinValue').value);
+    if (isNaN(rate) || isNaN(value)) {
+        return alert('Please enter valid numbers for rate and value.');
+    }
+    try {
+        await setDoc(doc(db, "settings", "global"), {
+            farmRate: rate,
+            coinToUsdValue: value
+        }, { merge: true });
+        alert('Settings updated successfully!');
+    } catch (e) {
+        alert('Error updating settings: ' + e.message);
+    }
+  };
+</script>
+</body>
+</html>
